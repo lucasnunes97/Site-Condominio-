@@ -1,0 +1,5 @@
+# Garante que a página inicial é servida (Apache na Amen / cPanel)
+DirectoryIndex index.php index.html
+
+# Não há RewriteRule aqui: pedidos a documento.php executam o PHP diretamente.
+# Se adicionar regras de reescrita noutro .htaccess, confirme que não capturam documento.php.
