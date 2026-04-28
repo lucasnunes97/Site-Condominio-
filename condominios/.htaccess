@@ -1,0 +1,2 @@
+# Impede listagem automática de diretórios no Apache (evita navegar pastas pelo browser).
+Options -Indexes
