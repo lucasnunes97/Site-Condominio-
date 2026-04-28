@@ -5,7 +5,7 @@ declare(strict_types=1);
 /**
  * Mensagens para o utilizador final (sem detalhes técnicos).
  *
- * @param 'nif_invalid'|'year_invalid'|'year_not_available'|'nif_not_found'|'file_not_found'|'download_failed'|'config_error'|'local_storage_missing'|'ftp_error' $code
+ * @param 'nif_invalid'|'senha_invalid'|'year_invalid'|'year_not_available'|'nif_not_found'|'file_not_found'|'download_failed'|'config_error'|'local_storage_missing'|'ftp_error' $code
  */
 function documento_error_messages(): array
 {
@@ -19,6 +19,10 @@ function documento_error_messages(): array
             'title' => 'Dados incorretos',
             'body'  => 'O NIF do condomínio deve ter exatamente 9 algarismos. Verifique o que escreveu e tente novamente.',
         ],
+        'senha_invalid' => [
+            'title' => 'Dados incorretos',
+            'body'  => 'A senha indicada é inválida. Verifique o que escreveu e tente novamente.',
+        ],
         'year_invalid' => [
             'title' => 'Ano inválido',
             'body'  => '',
@@ -29,11 +33,11 @@ function documento_error_messages(): array
         ],
         'nif_not_found' => [
             'title' => 'Documento não encontrado',
-            'body'  => 'Não encontrámos um documento para os dados que indicou. Confirme o NIF e o ano e tente novamente, ou contacte a Nuvipama.',
+            'body'  => 'Não encontrámos um documento para os dados que indicou. Confirme o NIF e a senha e tente novamente, ou contacte a Nuvipama.',
         ],
         'file_not_found' => [
             'title' => 'Documento não encontrado',
-            'body'  => 'Não encontrámos um documento para os dados que indicou. Confirme o NIF e o ano e tente novamente, ou contacte a Nuvipama.',
+            'body'  => 'Não encontrámos um documento para os dados que indicou. Confirme o NIF e a senha e tente novamente, ou contacte a Nuvipama.',
         ],
         'download_failed' => [
             'title' => 'Não foi possível mostrar o documento',
@@ -46,7 +50,7 @@ function documento_error_messages(): array
 }
 
 /**
- * @param 'nif_invalid'|'year_invalid'|'year_not_available'|'nif_not_found'|'file_not_found'|'download_failed'|'config_error'|'local_storage_missing'|'ftp_error' $code
+ * @param 'nif_invalid'|'senha_invalid'|'year_invalid'|'year_not_available'|'nif_not_found'|'file_not_found'|'download_failed'|'config_error'|'local_storage_missing'|'ftp_error' $code
  * @param array{year_min?: int, year_max?: int, year?: int, current_year?: int} $context
  */
 function documento_render_error(string $code, int $httpStatus, array $context = []): void

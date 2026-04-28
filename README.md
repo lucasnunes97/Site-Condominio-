@@ -15,7 +15,7 @@ Site em PHP para consulta de documentos de condomínio, formulário de seguros e
 ## Estrutura principal
 
 - `index.php` — páginas (Início, área do condomínio, seguros)
-- `documento.php` — consulta de PDF/HTML por NIF e ano
+- `documento.php` — consulta de PDF/HTML por NIF e senha (ficheiro: ANO-NIF+SENHA.htm)
 - `contato.php` — envio do formulário de seguros (JSON)
 - `lib/` — resolução de documentos (local/FTP), erros, config
 

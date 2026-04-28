@@ -113,23 +113,20 @@ if (empty($_SESSION['csrf_seguros'])) {
           </span>
           <div>
             <h2 class="section-head__title">Área do condomínio</h2>
-            <p class="section-head__lead">Indique o NIF do condomínio e o ano do documento. Por privacidade, os dados não ficam guardados: ao sair, atualizar ou voltar a esta página, terá de preencher novamente.</p>
+            <p class="section-head__lead">Indique o NIF do condomínio e a senha de acesso. Por privacidade, os dados não ficam guardados: ao sair, atualizar ou voltar a esta página, terá de preencher novamente.</p>
           </div>
         </header>
 
         <div class="card card--condo">
           <form id="form-condominio" class="form-grid form-grid--condo">
             <label>
-              NIF do condomínio
+              NIF do condómino
               <input type="text" id="nif" name="nif" inputmode="numeric" autocomplete="off" placeholder="Ex.: 501234567" required maxlength="9">
             </label>
-            <div class="form-row form-row--year">
-              <label class="form-row__field">
-                Ano
-                <input type="text" id="ano" name="ano" inputmode="numeric" autocomplete="off" maxlength="4" pattern="[0-9]{4}" required placeholder="2025" aria-describedby="ano-exemplo">
-              </label>
-              <span id="ano-exemplo" class="field-example">ex.: 2025 (anos entre 2000 e 2050)</span>
-            </div>
+            <label>
+              Senha
+              <input type="password" id="senha" name="senha" autocomplete="off" required maxlength="64" placeholder="Digite a senha">
+            </label>
             <div class="form-actions">
               <button type="submit" class="btn btn--primary">Consultar documento</button>
             </div>
@@ -234,6 +231,6 @@ if (empty($_SESSION['csrf_seguros'])) {
     </div>
   </footer>
 
-  <script src="assets/js/app.js" defer></script>
+  <script src="assets/js/app.js?v=20260427" defer></script>
 </body>
 </html>

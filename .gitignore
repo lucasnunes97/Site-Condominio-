@@ -1,3 +1,4 @@
 config.local.php
+portal_users.local.php
 *.log
 .DS_Store

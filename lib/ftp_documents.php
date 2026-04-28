@@ -13,14 +13,11 @@ function ftp_safe_close(mixed $conn): void
     @ftp_close($conn);
 }
 
-/** Normaliza o segmento base do caminho FTP (remove prefixos XAMPP/www acidentais). */
+/** Normaliza o segmento base do caminho FTP (remove prefixos XAMPP acidentais). */
 function ftp_normalize_config_base(string $basePathConfig): string
 {
     $raw = trim(str_replace('\\', '/', $basePathConfig), '/');
     if (preg_match('#(?:^|/)(?:xampp/)?htdocs/(.+)$#i', $raw, $m)) {
-        $raw = $m[1];
-    }
-    if (preg_match('#(?:^|/)www/(.+)$#i', $raw, $m)) {
         $raw = $m[1];
     }
     if (preg_match('#(?:^|/)site condominio/(.+)$#i', $raw, $m)) {
@@ -38,7 +35,19 @@ function ftp_normalize_config_base(string $basePathConfig): string
 function ftp_root_folder_seeds(?string $basePathConfig): array
 {
     $raw = ftp_normalize_config_base((string) ($basePathConfig ?? 'condominios'));
+    $withWww = str_starts_with($raw, 'www/') ? $raw : ('www/' . $raw);
     $extra = [
+        // Novo padrão: tudo dentro de www/Condominio (sem pasta por ano).
+        'Condominio',
+        'condominio',
+        'CONDOMINIO',
+        'www/Condominio',
+        'www/condominio',
+        'www/CONDOMINIO',
+        // Novo padrão do utilizador: todos os ficheiros em www/condominios (sem subpastas por ano).
+        'www/condominios',
+        'www/Condominios',
+        'www/CONDOMINIOS',
         'documento',
         'Documento',
         'DOCUMENTO',
@@ -46,7 +55,7 @@ function ftp_root_folder_seeds(?string $basePathConfig): array
         'Condominios',
         'CONDOMINIOS',
     ];
-    $seeds = array_merge([$raw], $extra);
+    $seeds = array_merge([$raw, $withWww], $extra);
 
     return array_values(array_unique(array_filter($seeds)));
 }
@@ -65,6 +74,11 @@ function ftp_year_directory_candidates(?string $basePathConfig, int $year): arra
     foreach ($seeds as $base) {
         $candidates[] = $base . '/' . $yearStr;
         $candidates[] = '/' . $base . '/' . $yearStr;
+        // Pastas comuns onde ficam extratos privados (case pode variar no servidor).
+        foreach (['Privados', 'privados'] as $priv) {
+            $candidates[] = $base . '/' . $yearStr . '/' . $priv;
+            $candidates[] = '/' . $base . '/' . $yearStr . '/' . $priv;
+        }
     }
 
     $out = [];
@@ -167,6 +181,59 @@ function ftp_filter_files_nif_and_year_in_name(array $list, string $remoteDir, s
 }
 
 /**
+ * Procura por nome exacto ou, se padronizado, por sufixo "__nome".
+ *
+ * @param list<string> $list
+ * @return array{remote_dir: string, remote_file: string, filename: string, extension: string, nif_digits: string}|null
+ */
+function ftp_find_named_file_in_list(array $list, string $remoteDir, string $tname, string $nifDigits): ?array
+{
+    $want = strtolower($tname);
+    foreach ($list as $name) {
+        $baseName = basename(str_replace('\\', '/', $name));
+        if ($baseName === '.' || $baseName === '..') {
+            continue;
+        }
+        if (strcasecmp($baseName, $tname) === 0) {
+            $ext = strtolower((string) pathinfo($baseName, PATHINFO_EXTENSION));
+
+            return [
+                'remote_dir'  => $remoteDir,
+                'remote_file' => $baseName,
+                'filename'    => $baseName,
+                'extension'   => $ext,
+                'nif_digits'  => $nifDigits,
+            ];
+        }
+    }
+
+    foreach ($list as $name) {
+        $baseName = basename(str_replace('\\', '/', $name));
+        if ($baseName === '.' || $baseName === '..') {
+            continue;
+        }
+        $lower = strtolower($baseName);
+        if (!str_ends_with($lower, $want)) {
+            continue;
+        }
+        if (!str_contains($lower, '__')) {
+            continue;
+        }
+        $ext = strtolower((string) pathinfo($baseName, PATHINFO_EXTENSION));
+
+        return [
+            'remote_dir'  => $remoteDir,
+            'remote_file' => $baseName,
+            'filename'    => $baseName,
+            'extension'   => $ext,
+            'nif_digits'  => $nifDigits,
+        ];
+    }
+
+    return null;
+}
+
+/**
  * @return list<bool>
  */
 function ftp_passive_attempts(bool $configured): array
@@ -181,7 +248,7 @@ function ftp_passive_attempts(bool $configured): array
  *
  * @return array{ok: true, found: array}|array{ok: false, reason: 'config_error'|'ftp_error'|'nif_not_found'|'file_not_found'}
  */
-function ftp_resolve_condominio_document(array $ftpConfig, string $nifDigits, int $year): array
+function ftp_resolve_condominio_document(array $ftpConfig, string $nifDigits, string $senha, int $year, string $docCode = 'dc', bool $allowLooseFallback = true): array
 {
     $host = $ftpConfig['host'] ?? '';
     $user = $ftpConfig['username'] ?? '';
@@ -196,6 +263,24 @@ function ftp_resolve_condominio_document(array $ftpConfig, string $nifDigits, in
     $yearStr = (string) $year;
     $yearDirs = ftp_year_directory_candidates($ftpConfig['base_path'] ?? 'condominios', $year);
     $flatBases = ftp_flat_base_directory_candidates($ftpConfig['base_path'] ?? 'condominios');
+    $targetStem = $yearStr . '-' . $nifDigits . $senha;
+    $targetStemJoined = $yearStr . $nifDigits . $senha;
+    $docCode = strtolower(trim($docCode));
+    if (!in_array($docCode, ['dc', 'cq', 'dr', 'fc'], true)) {
+        $docCode = 'dc';
+    }
+    $suffixes = $docCode === 'dc' ? ['', '-dc'] : ['-' . $docCode];
+    $targetNames = [];
+    foreach ($suffixes as $suffix) {
+        $targetNames[] = $targetStem . $suffix . '.htm';
+        $targetNames[] = $targetStem . $suffix . '.html';
+        $targetNames[] = $targetStem . $suffix . '.pdf';
+        $targetNames[] = $targetStemJoined . $suffix . '.htm';
+        $targetNames[] = $targetStemJoined . $suffix . '.html';
+        $targetNames[] = $targetStemJoined . $suffix . '.pdf';
+    }
+
+    $targetNames = array_values(array_unique(array_filter($targetNames)));
 
     $sortFn = static function (array $a, array $b): int {
         $prio = static function (string $ext): int {
@@ -231,11 +316,20 @@ function ftp_resolve_condominio_document(array $ftpConfig, string $nifDigits, in
             if ($list === false) {
                 continue;
             }
-            $matches = ftp_filter_files_nif_in_name($list, $ydir, $nifDigits);
-            if ($matches !== []) {
-                usort($matches, $sortFn);
-                $found = $matches[0];
-                break;
+            foreach ($targetNames as $tname) {
+                $hit = ftp_find_named_file_in_list($list, $ydir, $tname, $nifDigits);
+                if ($hit !== null) {
+                    $found = $hit;
+                    break 2;
+                }
+            }
+            if ($allowLooseFallback) {
+                $matches = ftp_filter_files_nif_in_name($list, $ydir, $nifDigits);
+                if ($matches !== []) {
+                    usort($matches, $sortFn);
+                    $found = $matches[0];
+                    break;
+                }
             }
         }
 
@@ -252,11 +346,20 @@ function ftp_resolve_condominio_document(array $ftpConfig, string $nifDigits, in
                     if ($list === false) {
                         continue;
                     }
-                    $matches = ftp_filter_files_nif_and_year_in_name($list, $baseDir, $nifDigits, $yearStr);
-                    if ($matches !== []) {
-                        usort($matches, $sortFn);
-                        $found = $matches[0];
-                        break;
+                    foreach ($targetNames as $tname) {
+                        $hit = ftp_find_named_file_in_list($list, $baseDir, $tname, $nifDigits);
+                        if ($hit !== null) {
+                            $found = $hit;
+                            break 2;
+                        }
+                    }
+                    if ($allowLooseFallback) {
+                        $matches = ftp_filter_files_nif_and_year_in_name($list, $baseDir, $nifDigits, $yearStr);
+                        if ($matches !== []) {
+                            usort($matches, $sortFn);
+                            $found = $matches[0];
+                            break;
+                        }
                     }
                 }
             }
@@ -280,10 +383,181 @@ function ftp_resolve_condominio_document(array $ftpConfig, string $nifDigits, in
     return ['ok' => false, 'reason' => 'file_not_found'];
 }
 
-function ftp_find_condominio_document(array $ftpConfig, string $nifDigits, int $year): ?array
+function ftp_find_condominio_document(array $ftpConfig, string $nifDigits, string $senha, int $year, string $docCode = 'dc'): ?array
 {
-    $r = ftp_resolve_condominio_document($ftpConfig, $nifDigits, $year);
+    $r = ftp_resolve_condominio_document($ftpConfig, $nifDigits, $senha, $year, $docCode);
     return ($r['ok'] ?? false) ? $r['found'] : null;
+}
+
+/**
+ * Resolve documentos partilhados (CQ/DR/FC + DC “geral”) no mesmo esquema do gCondominio:
+ * 2026-MM-condominio-...-(cq|dc|dr|fc).htm
+ *
+ * Usa o extrato privado (DC pessoal) para inferir o stem `MM-condominio-...`.
+ *
+ * @param array{filename: string, remote_dir: string, remote_file: string, extension: string}|null $privateFound
+ */
+function ftp_resolve_shared_condominio_document(
+    array $ftpConfig,
+    ?array $privateFound,
+    string $nifDigits,
+    string $senha,
+    int $year,
+    string $docCode = 'cq'
+): array {
+    require_once __DIR__ . '/shared_condominio_docs.php';
+
+    $host = $ftpConfig['host'] ?? '';
+    $user = $ftpConfig['username'] ?? '';
+    $pass = $ftpConfig['password'] ?? '';
+    $timeout = (int) ($ftpConfig['timeout'] ?? 30);
+
+    if ($host === '' || $user === '' || $pass === '' || $privateFound === null) {
+        return ['ok' => false, 'reason' => 'config_error'];
+    }
+
+    $docCode = strtolower(trim($docCode));
+    if (!in_array($docCode, ['cq', 'dr', 'fc', 'dc'], true)) {
+        return ['ok' => false, 'reason' => 'file_not_found'];
+    }
+
+    $remoteDir = (string) ($privateFound['remote_dir'] ?? '');
+    $remoteFile = (string) ($privateFound['remote_file'] ?? '');
+    $filenamePrivate = (string) ($privateFound['filename'] ?? '');
+    $localPathRaw = (string) ($privateFound['local_path'] ?? '');
+    $localPathReal = ($localPathRaw !== '' && is_readable($localPathRaw)) ? realpath($localPathRaw) : false;
+    $hasLocalPrivate = ($localPathReal !== false && is_file($localPathReal));
+
+    $hasFtpPrivate = ($remoteDir !== '' && $remoteFile !== '');
+
+    if (!$hasFtpPrivate && !$hasLocalPrivate) {
+        return ['ok' => false, 'reason' => 'file_not_found'];
+    }
+
+    $nameForStem = $hasFtpPrivate ? $remoteFile : (($filenamePrivate !== '') ? $filenamePrivate : basename((string) $localPathReal));
+    $stemBase = pathinfo($nameForStem, PATHINFO_FILENAME);
+    $stem = shared_extract_condominio_stem($stemBase, $year);
+
+    $passiveConfigured = (bool) ($ftpConfig['passive'] ?? false);
+    $yearStr = (string) $year;
+
+    $html = '';
+    if ($hasFtpPrivate) {
+        foreach (ftp_passive_attempts($passiveConfigured) as $passive) {
+            $data = ftp_download_file_attempt($host, $user, $pass, $timeout, $passive, $remoteDir, $remoteFile);
+            if ($data !== null && $data !== '') {
+                $html = $data;
+                break;
+            }
+        }
+    }
+
+    if ($html === '' && $hasLocalPrivate && $localPathReal !== false) {
+        $html = @file_get_contents((string) $localPathReal) ?: '';
+    }
+
+    if (($stem === null || $stem === '') && $html !== '') {
+        $infer = shared_infer_condominio_stem_from_private($html, $year);
+        if ($infer !== null) {
+            $stem = $infer['stem'];
+        }
+    }
+
+    if ($stem === null || $stem === '') {
+        return ['ok' => false, 'reason' => 'file_not_found'];
+    }
+
+    if ($html !== '' && !shared_verify_stem_in_html($html, $stem, null)) {
+        return ['ok' => false, 'reason' => 'file_not_found'];
+    }
+
+    $suffixes = $docCode === 'dc' ? ['', '-dc'] : ['-' . $docCode];
+    $targetNames = [];
+    foreach ($suffixes as $suffix) {
+        // Padrão antigo: com ano
+        $targetNames[] = $yearStr . '-' . $stem . $suffix . '.htm';
+        $targetNames[] = $yearStr . '-' . $stem . $suffix . '.html';
+        // Padrão novo: sem ano
+        $targetNames[] = $stem . $suffix . '.htm';
+        $targetNames[] = $stem . $suffix . '.html';
+    }
+    $targetNames = array_values(array_unique(array_filter($targetNames)));
+
+    $yearDirs = ftp_year_directory_candidates($ftpConfig['base_path'] ?? 'condominios', $year);
+    $flatBases = ftp_flat_base_directory_candidates($ftpConfig['base_path'] ?? 'condominios');
+
+    $loginOk = false;
+
+    foreach (ftp_passive_attempts($passiveConfigured) as $passive) {
+        $conn = @ftp_connect($host, 21, $timeout);
+        if ($conn === false) {
+            continue;
+        }
+        if (!@ftp_login($conn, $user, $pass)) {
+            ftp_safe_close($conn);
+            continue;
+        }
+        $loginOk = true;
+        ftp_pasv($conn, $passive);
+
+        $found = null;
+        foreach ($yearDirs as $ydir) {
+            if (!@ftp_chdir($conn, $ydir)) {
+                continue;
+            }
+            $list = @ftp_nlist($conn, '.');
+            if ($list === false) {
+                continue;
+            }
+            foreach ($targetNames as $tname) {
+                $hit = ftp_find_named_file_in_list($list, $ydir, $tname, $nifDigits);
+                if ($hit !== null) {
+                    $found = $hit;
+                    break 2;
+                }
+            }
+        }
+
+        if ($found === null) {
+            ftp_safe_close($conn);
+            $conn = @ftp_connect($host, 21, $timeout);
+            if ($conn !== false && @ftp_login($conn, $user, $pass)) {
+                ftp_pasv($conn, $passive);
+                foreach ($flatBases as $baseDir) {
+                    if (!@ftp_chdir($conn, $baseDir)) {
+                        continue;
+                    }
+                    $list = @ftp_nlist($conn, '.');
+                    if ($list === false) {
+                        continue;
+                    }
+                    foreach ($targetNames as $tname) {
+                        $hit = ftp_find_named_file_in_list($list, $baseDir, $tname, $nifDigits);
+                        if ($hit !== null) {
+                            $found = $hit;
+                            break 2;
+                        }
+                    }
+                }
+            }
+        }
+
+        if ($conn !== false) {
+            ftp_safe_close($conn);
+        }
+
+        if ($found !== null) {
+            $found['search_year'] = $year;
+
+            return ['ok' => true, 'found' => $found];
+        }
+    }
+
+    if (!$loginOk) {
+        return ['ok' => false, 'reason' => 'ftp_error'];
+    }
+
+    return ['ok' => false, 'reason' => 'file_not_found'];
 }
 
 /**
@@ -394,4 +668,28 @@ function ftp_download_file_attempt(
     }
 
     return $data;
+}
+
+/**
+ * Download simples de um ficheiro estático do mesmo diretório do documento.
+ */
+function ftp_download_file_attempts(array $ftpConfig, string $remoteDir, string $remoteFile): ?string
+{
+    $host = $ftpConfig['host'] ?? '';
+    $user = $ftpConfig['username'] ?? '';
+    $pass = $ftpConfig['password'] ?? '';
+    $timeout = (int) ($ftpConfig['timeout'] ?? 30);
+    if ($host === '' || $user === '' || $pass === '' || $remoteFile === '') {
+        return null;
+    }
+
+    $passiveConfigured = (bool) ($ftpConfig['passive'] ?? false);
+    foreach (ftp_passive_attempts($passiveConfigured) as $passive) {
+        $data = ftp_download_file_attempt($host, $user, $pass, $timeout, $passive, $remoteDir, $remoteFile);
+        if ($data !== null && $data !== '') {
+            return $data;
+        }
+    }
+
+    return null;
 }

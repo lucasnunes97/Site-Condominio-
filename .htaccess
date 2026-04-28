@@ -3,3 +3,17 @@ DirectoryIndex index.php index.html
 
 # Não há RewriteRule aqui: pedidos a documento.php executam o PHP diretamente.
 # Se adicionar regras de reescrita noutro .htaccess, confirme que não capturam documento.php.
+
+# Fallback para logo do gCondominio:
+# Muitos HTMLs referenciam "logo.jpg" relativo. Para evitar 404, servir sempre a mesma imagem
+# a partir de /www/condominios/logo.jpg (sem depender de reescrita no HTML).
+<IfModule mod_rewrite.c>
+RewriteEngine On
+
+# Se pedirem /logo.jpg, servir a cópia global em condominios/ (layout novo).
+# Nota: em muitos hosts o DOCUMENT_ROOT já é a pasta "www", então tentamos com e sem "www/".
+RewriteCond %{REQUEST_URI} ^/logo\.jpg$ [NC]
+RewriteCond %{DOCUMENT_ROOT}/condominios/logo.jpg -f [OR]
+RewriteCond %{DOCUMENT_ROOT}/www/condominios/logo.jpg -f
+RewriteRule ^logo\.jpg$ /condominios/logo.jpg [L]
+</IfModule>

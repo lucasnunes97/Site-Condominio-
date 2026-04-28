@@ -11,7 +11,7 @@ return [
      * - ftp: só FTP (condominios/{ANO}/ficheiro com NIF no nome; fallback: raiz com NIF e ano no nome)
      */
     'document_storage' => 'auto',
-    /** Caminho absoluto opcional para a pasta «condominios» no disco; por omissão: pasta condominios na raiz do site. */
+    /** Caminho absoluto opcional para a pasta onde ficam os ficheiros (por omissão: www/Condominio na raiz do site). */
     'local_condominios_path' => null,
 
     'ftp' => [
@@ -19,10 +19,10 @@ return [
         'username' => 'dados@nuvipamapt',
         'password' => 'SUA_SENHA_FTP',
         /**
-         * Pasta base no FTP (ex.: condominios). O código procura também em «documento» e «condominios».
-         * Ex.: documento/123456789-2025.pdf ou condominios/2025/… com NIF no nome do ficheiro.
+         * Pasta base no FTP. Novo padrão recomendado: www/Condominio (sem subpastas por ano).
+         * O código ainda tenta também pastas antigas (condominios/{ANO}, documento/{ANO}, etc).
          */
-        'base_path' => 'condominios',
+        'base_path' => 'www/Condominio',
         /** Em alojamento partilhado use em geral true; o código tenta também o modo contrário. */
         'passive'  => true,
         'timeout'  => 30,

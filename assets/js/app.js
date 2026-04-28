@@ -163,8 +163,8 @@
     formCondo.addEventListener("submit", (e) => {
       e.preventDefault();
       const nif = (document.getElementById("nif") || {}).value || "";
-      const ano = (document.getElementById("ano") || {}).value || "";
-      const q = new URLSearchParams({ nif: nif.trim(), ano: ano });
+      const senha = (document.getElementById("senha") || {}).value || "";
+      const q = new URLSearchParams({ nif: nif.trim(), senha: senha });
       const url = "documento.php?" + q.toString();
       if (docToolbar) {
         docToolbar.hidden = false;
